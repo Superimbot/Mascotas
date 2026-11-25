@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Homenaje - Copito y Curly</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #090d16, #111827, #1e1b4b);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud-title { font-size: 1rem; color: #ffd700; text-shadow: 0 2px 4px rgba(0,0,0,0.6); font-weight: bold; }
+        .hud-timer { font-size: 1.1rem; color: #94a3b8; font-weight: bold; background: rgba(0,0,0,0.4); padding: 5px 12px; border-radius: 20px; }
+        
+        /* Menú inicial normal */
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 23, 42, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #ffd700;
+            z-index: 20;
+            width: 88%;
+            max-width: 360px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        #menu h2 { color: #ffd700; margin-bottom: 10px; font-size: 1.3rem; }
+        #menu p { font-size: 0.85rem; color: #cbd5e1; margin-bottom: 15px; line-height: 1.4; }
+        .btn-group { display: flex; justify-content: center; gap: 12px; }
+        .char-btn {
+            flex: 1;
+            padding: 12px 8px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .btn-curly { background: #f4a261; color: #1a1a2e; }
+        .btn-copito { background: #1e1e1e; color: #4ecca3; border: 2px solid #4ecca3; }
+
+        /* Estilo para pantalla completa gigante al final */
+        #menu.fullscreen-mode {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            border-radius: 0;
+            border: none;
+            background: rgba(9, 13, 22, 0.97);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .btn-restart { 
+            background: #ffd700; 
+            color: #1a1a2e; 
+            width: 80%; 
+            max-width: 300px;
+            margin-top: 15px; 
+            padding: 14px; 
+            border-radius: 14px; 
+            font-size: 1.1rem; 
+            font-weight: bold; 
+            border: none; 
+            cursor: pointer; 
+        }
+
+        /* Controles táctiles */
+        #controls {
+            position: absolute;
+            bottom: 25px;
+            right: 25px;
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 15;
+        }
+        .ctrl-btn {
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.12);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 1.6rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            touch-action: manipulation;
+        }
+        .ctrl-btn:active { background: rgba(255, 215, 0, 0.4); border-color: #ffd700; }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="hud-title" id="status-text">🕊️ Homenaje en Paz</div>
+        <div class="hud-timer" id="timer-display">Tiempo: 1:00</div>
+    </div>
+
+    <div id="menu">
+        <h2 id="menu-title">Elige a tu compañero</h2>
+        <p id="menu-desc">Un viaje tranquilo de 1 minuto acompañado de guitarra suave. Al final, se reencontrarán con el cielo.</p>
+        <div class="btn-group" id="btn-container">
+            <button class="char-btn btn-curly" onclick="startJourney('curly')">🐶 Curly</button>
+            <button class="char-btn btn-copito" onclick="startJourney('copito')">🐱 Copito</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button class="ctrl-btn" id="btn-up">▲</button>
+        <button class="ctrl-btn" id="btn-down">▼</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+        const controls = document.getElementById('controls');
+        const timerDisplay = document.getElementById('timer-display');
+        const statusText = document.getElementById('status-text');
+        const menuTitle = document.getElementById('menu-title');
+        const menuDesc = document.getElementById('menu-desc');
+        const btnContainer = document.getElementById('btn-container');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let character = 'curly';
+        let gameRunning = false;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let audioCtx = null;
+        let guitarInterval = null;
+        let ascendingToHeaven = false;
+
+        const player = {
+            x: 70,
+            y: canvas.height / 2,
+            width: 44,
+            height: 36,
+            speedY: 5.5,
+            moveUp: false,
+            moveDown: false
+        };
+
+        let items = [];
+        let starsBg = [];
+
+        for (let i = 0; i < 70; i++) {
+            starsBg.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 0.5,
+                speed: Math.random() * 0.5 + 0.2
+            });
+        }
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const notes = [261.63, 329.63, 392.00, 523.25, 440.00, 349.23];
+            let index = 0;
+            if (guitarInterval) clearInterval(guitarInterval);
+
+            guitarInterval = setInterval(() => {
+                if (!gameRunning) return;
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(notes[index], audioCtx.currentTime);
+                    index = (index + 1) % notes.length;
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 1.5);
+                } catch (e) {}
+            }, 1200);
+        }
+
+        function stopAudio() {
+            if (guitarInterval) clearInterval(guitarInterval);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') player.moveUp = true;
+            if (e.key === 'ArrowDown' || e.key === 's') player.moveDown = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') player.moveUp = false;
+            if (e.key === 'ArrowDown' || e.key === 's') player.moveDown = false;
+        });
+
+        const btnUp = document.getElementById('btn-up');
+        const btnDown = document.getElementById('btn-down');
+        btnUp.addEventListener('touchstart', (e) => { e.preventDefault(); player.moveUp = true; });
+        btnUp.addEventListener('touchend', () => { player.moveUp = false; });
+        btnDown.addEventListener('touchstart', (e) => { e.preventDefault(); player.moveDown = true; });
+        btnDown.addEventListener('touchend', () => { player.moveDown = false; });
+
+        function startJourney(selected) {
+            character = selected;
+            menu.classList.remove('fullscreen-mode');
+            menu.style.display = 'none';
+            controls.style.display = 'flex';
+            timeLeft = 60;
+            items = [];
+            player.y = canvas.height / 2;
+            player.moveUp = false;
+            player.moveDown = false;
+            ascendingToHeaven = false;
+            gameRunning = true;
+
+            statusText.innerText = character === 'curly' ? "🐶 En memoria de Curly" : "🐱 En memoria de Copito";
+            initAudio();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!gameRunning) return;
+                timeLeft--;
+                let mins = Math.floor(timeLeft / 60);
+                let secs = timeLeft % 60;
+                timerDisplay.innerText = `Tiempo: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+                if (timeLeft <= 0) {
+                    startHeavenAscent();
+                }
+            }, 1000);
+
+            requestAnimationFrame(update);
+        }
+
+        function startHeavenAscent() {
+            gameRunning = false;
+            stopAudio();
+            controls.style.display = 'none';
+            ascendingToHeaven = true;
+            setTimeout(() => {
+                showFinalScreen();
+            }, 4000);
+        }
+
+        function showFinalScreen() {
+            ascendingToHeaven = false;
+            menu.classList.add('fullscreen-mode');
+            menuTitle.innerText = "✨ En el Reino de Dios ✨";
+            
+            let ownerName = character === 'curly' ? "Fernanfloo y Curly" : "Germán, Lenay y Copito";
+            
+            // Enlaces corregidos y ordenados correctamente:
+            // Curly (images-(9)) y Copito (images-(8))
+            let photoUrl = character === 'curly' 
+                ? "https://i.postimg.cc/YvQzy2rW/images-(9).jpg" 
+                : "https://i.postimg.cc/k2WvhMJM/images-(8).jpg";
+            
+            menuDesc.innerHTML = `
+                <div style="font-size: 1.1rem; color: #94a3b8; margin-bottom: 12px;">Recuerdo eterno junto a sus dueños (${ownerName})</div>
+                <img src="${photoUrl}" style="width: 260px; height: 190px; border-radius: 15px; object-fit: cover; border: 3px solid #ffd700; margin: 10px auto; display: block; box-shadow: 0 8px 25px rgba(0,0,0,0.8);" alt="Recuerdo">
+                <p style="margin-top: 15px; font-style: italic; color: #ffd700; font-size: 1.3rem; font-weight: bold;">"Que descansen en paz."</p>
+            `;
+            btnContainer.innerHTML = `<button class="btn-restart" onclick="location.reload()">Volver a Recordar</button>`;
+            menu.style.display = 'flex';
+        }
+
+        function triggerGameOver() {
+            gameRunning = false;
+            stopAudio();
+            controls.style.display = 'none';
+            menu.classList.remove('fullscreen-mode');
+            menuTitle.innerText = "No importa, reinténtalo de nuevo";
+            menuDesc.innerText = "Un pequeño tropiezo en el camino. Respira hondo y vuelve a acompañar su vuelo.";
+            btnContainer.innerHTML = `<button class="btn-restart" onclick="location.reload()" style="width:100%; margin-top:15px;">Reintentar</button>`;
+            menu.style.display = 'block';
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.shadowColor = character === 'curly' ? '#ffd700' : '#4ecca3';
+            ctx.shadowBlur = 12;
+
+            if (character === 'curly') {
+                ctx.fillStyle = '#e9c46a';
+                ctx.beginPath();
+                ctx.roundRect(player.x, player.y, player.width, player.height, 10);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.ellipse(player.x + 15, player.y - 4, 12, 6, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#c88a4b';
+                ctx.beginPath();
+                ctx.roundRect(player.x + 8, player.y + 8, 12, 18, 5);
+                ctx.fill();
+
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(player.x + 32, player.y + 12, 3, 0, Math.PI * 2);
+                ctx.arc(player.x + 42, player.y + 18, 4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#18181b';
+                ctx.beginPath();
+                ctx.roundRect(player.x, player.y, player.width, player.height, 10);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(player.x + 8, player.y + 2);
+                ctx.lineTo(player.x + 14, player.y - 11);
+                ctx.lineTo(player.x + 22, player.y + 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(player.x + 24, player.y + 2);
+                ctx.lineTo(player.x + 31, player.y - 11);
+                ctx.lineTo(player.x + 37, player.y + 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.ellipse(player.x + 12, player.y + 12, 11, 5, -0.4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#4ecca3';
+                ctx.beginPath();
+                ctx.arc(player.x + 28, player.y + 13, 3.5, 0, Math.PI * 2);
+                ctx.arc(player.x + 38, player.y + 13, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawToy(x, y) {
+            ctx.save();
+            if (character === 'curly') {
+                ctx.fillStyle = '#ffd166';
+                ctx.fillRect(x + 6, y + 10, 18, 8);
+                ctx.beginPath();
+                ctx.arc(x + 6, y + 10, 5, 0, Math.PI * 2);
+                ctx.arc(x + 6, y + 18, 5, 0, Math.PI * 2);
+                ctx.arc(x + 24, y + 10, 5, 0, Math.PI * 2);
+                ctx.arc(x + 24, y + 18, 5, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#d4a373';
+                ctx.fillRect(x + 4, y + 6, 22, 18);
+                ctx.strokeStyle = '#faedcd';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 4, y + 6, 22, 18);
+            }
+            ctx.restore();
+        }
+
+        function drawObstacle(x, y, w, h) {
+            ctx.fillStyle = '#475569';
+            ctx.beginPath();
+            ctx.arc(x + w * 0.3, y + h * 0.6, h * 0.4, 0, Math.PI * 2);
+            ctx.arc(x + w * 0.6, y + h * 0.5, h * 0.5, 0, Math.PI * 2);
+            ctx.arc(x + w * 0.8, y + h * 0.65, h * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function spawnItem() {
+            if (Math.random() < 0.025) {
+                const isObstacle = Math.random() < 0.4;
+                const margin = 60;
+                const randomY = margin + Math.random() * (canvas.height - margin * 2);
+                items.push({
+                    x: canvas.width + 20,
+                    y: randomY,
+                    width: isObstacle ? 50 : 30,
+                    height: isObstacle ? 30 : 28,
+                    type: isObstacle ? 'obstacle' : 'toy'
+                });
+            }
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            starsBg.forEach(s => {
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                ctx.fill();
+                s.x -= s.speed;
+                if (s.x < 0) {
+                    s.x = canvas.width;
+                    s.y = Math.random() * canvas.height;
+                }
+            });
+
+            if (ascendingToHeaven) {
+                player.y -= 1.5;
+                drawPlayer();
+                requestAnimationFrame(update);
+                return;
+            }
+
+            if (!gameRunning) return;
+
+            if (player.moveUp && player.y > 55) player.y -= player.speedY;
+            if (player.moveDown && player.y < canvas.height - player.height - 20) player.y += player.speedY;
+
+            drawPlayer();
+            spawnItem();
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.x -= 3.5;
+
+                if (item.type === 'toy') {
+                    drawToy(item.x, item.y);
+                } else {
+                    drawObstacle(item.x, item.y, item.width, item.height);
+                }
+
+                if (
+                    player.x < item.x + item.width - 5 &&
+                    player.x + player.width - 5 > item.x &&
+                    player.y < item.y + item.height - 5 &&
+                    player.y + player.height - 5 > item.y
+                ) {
+                    if (item.type === 'obstacle') {
+                        triggerGameOver();
+                    } else {
+                        items.splice(i, 1);
+                    }
+                }
+
+                if (item.x + item.width < -50) {
+                    items.splice(i, 1);
+                }
+            }
+
+            if (gameRunning) {
+                requestAnimationFrame(update);
+            }
+        }
+    </script>
+</body>
+</html>
